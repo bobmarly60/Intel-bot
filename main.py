@@ -9,8 +9,8 @@ SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562447233448808678/UStaM
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
 
-# Fresh memory file so it doesn't spam old scripts
-SB_SEEN = "sb_seen_v5.txt"
+# Fresh memory file so it doesn't spam the old stuff
+SB_SEEN = "sb_seen_v7.txt"
 
 def load_seen(path):
     if os.path.exists(path):
@@ -39,9 +39,9 @@ def check_scriptblox():
     seen = load_seen(SB_SEEN)
     baseline = not seen
     
+    # Sort by updatedAt to catch week-old approvals. Fetch 100 scripts to be safe.
     try:
-        # Sort by updatedAt: The second a mod approves a script, its updatedAt becomes "now"
-        url = SCRIPTBLOX_API + "?page=1&max=50&sortBy=updatedAt&order=desc"
+        url = SCRIPTBLOX_API + "?page=1&max=100&sortBy=updatedAt&order=desc"
         r = requests.get(url, headers=HEADERS, timeout=15)
         
         if r.status_code != 200:
@@ -58,10 +58,10 @@ def check_scriptblox():
                 seen.add(sid)
                 continue
             
-            # THE MAGIC FILTER: Only send if it's a new approval (0 - 200 views)
+            # MAGIC FILTER: Ignore anything with over 400 views
             views = s.get("views", 0)
-            if views > 200:
-                continue # Ignore old, popular scripts that just got edited
+            if views > 400:
+                continue
                 
             title = s.get("title", "Unknown Script")
             game = (s.get("game") or {}).get("name", "Unknown")
@@ -81,7 +81,7 @@ def check_scriptblox():
     save_seen(SB_SEEN, seen)
 
 if __name__ == "__main__":
-    print("Starting 1-minute loop. ONLY sending approvals under 200 views...")
+    print("Starting 1-minute loop. Catching week-old approvals.")
     start_time = time.time()
     while time.time() - start_time < 21000:
         print("Checking ScriptBlox for new approvals...")
