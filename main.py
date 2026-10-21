@@ -1,10 +1,10 @@
 # Python 3.10+, GitHub Actions — ScriptBlox + V3rm roblox.19 → Discord
 import os
 import time
+import random
 from datetime import datetime, timezone, timedelta
 import requests
 import feedparser
-from urllib.parse import quote
 
 # --- WEBHOOKS ---
 V3RM_WEBHOOK = "https://discord.com/api/webhooks/1562394916653367417/ItV37v1r4LwP1twjlGLM1_hICp9Ju1-eCNNqgVcW7ytl27TqVIyEmTNSZ5mrhtdWlmCl"
@@ -15,10 +15,13 @@ SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5"
 }
 
 V3RM_SEEN = "v3rm_seen.txt"
 SB_SEEN = "sb_seen.txt"
+PROXY_FILE = "working_proxy.txt"
 FRESH_WINDOW = timedelta(minutes=15)
 
 def load_seen(path):
@@ -44,41 +47,56 @@ def send_discord(webhook_url, title, description, url, color, footer):
     except Exception as e:
         print(f"[hook] error: {e}")
 
+def fetch_v3rm_rss():
+    # 1. Try the saved proxy first
+    if os.path.exists(PROXY_FILE):
+        with open(PROXY_FILE, "r") as f:
+            saved_proxy = f.read().strip()
+            if saved_proxy:
+                print(f"[v3rm] testing saved proxy: {saved_proxy}")
+                try:
+                    r = requests.get(V3RM_RSS, headers=HEADERS, proxies={"http": saved_proxy, "https": saved_proxy}, timeout=10)
+                    if r.status_code == 200 and b"<?xml" in r.content:
+                        print("[v3rm] saved proxy works!")
+                        return r.content
+                except Exception:
+                    pass
+
+    # 2. If saved proxy fails, hunt for a new one
+    print("[v3rm] hunting for a new proxy...")
+    try:
+        # Get a huge list of free public proxies
+        res = requests.get("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt", timeout=10)
+        proxy_list = res.text.splitlines()
+        random.shuffle(proxy_list)
+        
+        for p in proxy_list[:100]: # Try up to 100 proxies
+            proxy_url = f"http://{p}"
+            try:
+                r = requests.get(V3RM_RSS, headers=HEADERS, proxies={"http": proxy_url, "https": proxy_url}, timeout=5)
+                if r.status_code == 200 and b"<?xml" in r.content:
+                    print(f"[v3rm] FOUND WORKING PROXY: {proxy_url}")
+                    with open(PROXY_FILE, "w") as f:
+                        f.write(proxy_url)
+                    return r.content
+            except Exception:
+                continue # Try the next one
+    except Exception as e:
+        print(f"[v3rm] Proxy hunt error: {e}")
+    
+    return None
+
 def check_v3rm():
     print("[v3rm] checking...")
     seen = load_seen(V3RM_SEEN)
     baseline = not seen
-    encoded_url = quote(V3RM_RSS, safe='')
     
-    # Three different powerful proxies
-    proxies = [
-        f"https://api.codetabs.com/v1/proxy?quest={encoded_url}",
-        f"https://api.allorigins.win/raw?url={encoded_url}",
-        f"https://corsproxy.io/?{encoded_url}"
-    ]
-    
-    feed = None
-    for i, proxy in enumerate(proxies, 1):
-        try:
-            print(f"[v3rm] trying proxy {i}...")
-            r = requests.get(proxy, headers=HEADERS, timeout=15)
-            if r.status_code == 200:
-                parsed = feedparser.parse(r.content)
-                if parsed.entries:
-                    print(f"[v3rm] success via proxy {i}")
-                    feed = parsed
-                    break
-                else:
-                    print(f"[v3rm] proxy {i} empty.")
-            else:
-                print(f"[v3rm] proxy {i} failed: {r.status_code}")
-        except Exception as e:
-            print(f"[v3rm] proxy {i} error: {e}")
-
-    if not feed:
-        print("[v3rm] all proxies failed.")
+    content = fetch_v3rm_rss()
+    if not content:
+        print("[v3rm] all proxies failed this run. will try again later.")
         return
-
+        
+    feed = feedparser.parse(content)
     for e in feed.entries:
         link = e.get("link", "").strip()
         title = e.get("title", "Untitled").strip()
