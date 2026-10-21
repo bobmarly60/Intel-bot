@@ -1,0 +1,39 @@
+name: Intel Bot
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: intel-bot
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install deps
+        run: pip install requests feedparser
+
+      - name: Run bot
+        run: python main.py
+
+      - name: Commit seen files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add v3rm_seen.txt sb_seen.txt 2>/dev/null || true
+          git commit -m "update seen" || exit 0
+          git push
