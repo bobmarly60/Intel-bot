@@ -1,46 +1,89 @@
-# FORCED TEST SCRIPT
-import requests
+# Python 3.10+, GitHub Actions — ScriptBlox → Discord
+import os
 import time
+from datetime import datetime, timezone
+import requests
 
-# YOUR WEBHOOK
-WEBHOOK_URL = "https://discord.com/api/webhooks/1562443293395132566/TK090DqpvlA6nLw42hwg_5Bhn2u-wNZys_r9Ig3KIrr1-hcVN0XgTsMPboHiqT2QqK-W"
+# --- SCRIPTBLOX WEBHOOK ---
+SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562443293395132566/TK090DqpvlA6nLw42hwg_5Bhn2u-wNZys_r9Ig3KIrr1-hcVN0XgTsMPboHiqT2QqK-W"
+
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
 
-print("Fetching latest script for test...")
-try:
-    # Get the absolute latest script
-    r = requests.get(SCRIPTBLOX_API + "?page=1&max=1&sortBy=createdAt&order=desc", timeout=15)
-    r.raise_for_status()
-    scripts = r.json().get("result", {}).get("scripts", [])
+SB_SEEN = "sb_seen.txt"
+
+def load_seen(path):
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return set(line.strip() for line in f if line.strip())
+    return set()
+
+def save_seen(path, seen):
+    with open(path, "w") as f:
+        f.write("\n".join(sorted(seen)) + ("\n" if seen else ""))
+
+def send_discord(webhook_url, title, description, url, color, footer):
+    payload = {"embeds": [{
+        "title": title[:256], "url": url,
+        "description": description[:2048],
+        "color": color, "footer": {"text": footer},
+    }]}
+    try:
+        r = requests.post(webhook_url, json=payload, headers=HEADERS, timeout=15)
+        print("[hook]", r.status_code, "::", title[:60])
+        time.sleep(2)
+    except Exception as e:
+        print("[hook] error:", e)
+
+def check_scriptblox():
+    seen = load_seen(SB_SEEN)
+    baseline = not seen
     
-    if not scripts:
-        print("No scripts found on ScriptBlox API.")
-    else:
-        s = scripts[0]
-        title = s.get("title", "Test Script")
-        game = (s.get("game") or {}).get("name", "Test Game")
-        sid = s.get("_id") or s.get("id")
-        slug = s.get("slug", "")
-        link = "https://scriptblox.com/script/" + slug + "-" + sid if slug else "https://scriptblox.com/script/" + sid
-        
-        print(f"Sending TEST to Discord: {title}")
-        
-        payload = {
-            "embeds": [{
-                "title": "TEST: " + title,
-                "url": link,
-                "description": "**This is a forced test message.**\n**Game:** " + game,
-                "color": 16711680
-            }]
-        }
-        
-        # Send to Discord
-        post = requests.post(WEBHOOK_URL, json=payload, timeout=15)
-        print(f"Discord response code: {post.status_code}")
-        if post.status_code == 204:
-            print("SUCCESS! Check your Discord channel.")
-        else:
-            print(f"FAILED. Discord says: {post.text}")
+    for page in range(1, 6):
+        try:
+            url = SCRIPTBLOX_API + "?page=" + str(page) + "&max=20&sortBy=createdAt&order=desc"
+            r = requests.get(url, headers=HEADERS, timeout=20)
+            if r.status_code != 200: break
+                
+            scripts = r.json().get("result", {}).get("scripts", [])
+            if not scripts: break
+                
+            for s in scripts:
+                sid = s.get("_id") or s.get("id")
+                if not sid or sid in seen: continue
+                
+                if baseline:
+                    seen.add(sid)
+                    continue
+                
+                title = s.get("title", "Unknown Script")
+                game = (s.get("game") or {}).get("name", "Unknown")
+                slug = s.get("slug", "")
+                
+                if slug:
+                    link = "https://scriptblox.com/script/" + slug
+                else:
+                    link = "https://scriptblox.com/script/" + sid
+                    
+                desc = "**Game:** " + game + "\n**Views:** " + str(s.get('views',0)) + "\n**Key:** `" + str(s.get('key',False)) + "`"
+                send_discord(SCRIPTBLOX_WEBHOOK, title, desc, link, 0x3498DB, "ScriptBlox")
+                
+                seen.add(sid)
+                
+        except Exception as e:
+            print("[sb] error on page", page, ":", e)
+            break
             
-except Exception as e:
-    print(f"Error: {e}")
+    if baseline:
+        print("[sb] baseline:", len(seen), "cached")
+    save_seen(SB_SEEN, seen)
+
+if __name__ == "__main__":
+    print("Starting 1-minute loop. Will run for ~5 hours 50 minutes...")
+    # Run for 5 hours 50 mins (21000 seconds), then let GitHub restart us
+    start_time = time.time()
+    while time.time() - start_time < 21000:
+        print("Checking ScriptBlox...")
+        check_scriptblox()
+        print("Sleeping for 60 seconds...")
+        time.sleep(60)
