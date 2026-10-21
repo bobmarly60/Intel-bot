@@ -2,15 +2,15 @@
 import os
 import time
 from datetime import datetime, timezone, timedelta
-import requests
 import feedparser
-import cloudscraper
+import requests
+from curl_cffi import requests as cffi_requests
 
 # --- WEBHOOKS ---
 V3RM_WEBHOOK = "https://discord.com/api/webhooks/1562394916653367417/ItV37v1r4LwP1twjlGLM1_hICp9Ju1-eCNNqgVcW7ytl27TqVIyEmTNSZ5mrhtdWlmCl"
 SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562395084971057152/aFM9z7Z352KMHPNMfXaC4t-h-h_iuK-6eV08zW5Ttw-vKHqTAxnkqwCwfkL0pO26-AAv"
 
-# Direct V3rm URL (cloudscraper will bypass the Cloudflare block)
+# Direct V3rm URL
 V3RM_RSS = "https://v3rm.net/forums/roblox.19/index.rss"
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 
@@ -50,10 +50,10 @@ def check_v3rm():
     seen = load_seen(V3RM_SEEN)
     baseline = not seen
     try:
-        # Use cloudscraper to bypass Cloudflare
-        scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
-        r = scraper.get(V3RM_RSS, timeout=25)
+        # curl_cffi impersonates Chrome to bypass Cloudflare
+        r = cffi_requests.get(V3RM_RSS, impersonate="chrome", timeout=30)
         print(f"[v3rm] status: {r.status_code}")
+        
         if r.status_code != 200:
             print(f"[v3rm] body: {r.text[:200]}"); return
         
