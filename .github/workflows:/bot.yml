@@ -15,7 +15,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ubuntu-latest
+  scrape:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
