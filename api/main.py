@@ -10,8 +10,8 @@ import requests
 V3RM_WEBHOOK = "https://discord.com/api/webhooks/1562394916653367417/ItV37v1r4LwP1twjlGLM1_hICp9Ju1-eCNNqgVcW7ytl27TqVIyEmTNSZ5mrhtdWlmCl"
 SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562395084971057152/aFM9z7Z352KMHPNMfXaC4t-h-h_iuK-6eV08zW5Ttw-vKHqTAxnkqwCwfkL0pO26-AAv"
 
-# --- VERCEL PROXY (Replace YOUR-VERCEL-URL after Step 4) ---
-V3RM_PROXY = "https://YOUR-VERCEL-URL.vercel.app/api/proxy"
+# --- VERCEL PROXY ---
+V3RM_PROXY = "https://intelbot-rho.vercel.app/api/proxy"
 V3RM_RSS = f"{V3RM_PROXY}?url=https%3A%2F%2Fv3rm.net%2Fforums%2Froblox.19%2Findex.rss"
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 
