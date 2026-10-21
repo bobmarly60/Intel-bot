@@ -2,7 +2,7 @@ name: Intel Bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '0 */6 * * *'
   push:
     branches:
       - main
@@ -11,13 +11,17 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
-      - run: pip install requests feedparser
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install requests
       - run: python main.py
       - run: |
           git config user.name 'github-actions'
           git config user.email 'actions@github.com'
           git add .
-          git commit -m "update" || exit 0
+          git commit -m "update seen" || exit 0
           git push
