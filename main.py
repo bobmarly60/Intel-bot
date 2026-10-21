@@ -39,9 +39,11 @@ def check_scriptblox():
     seen = load_seen(SB_SEEN)
     baseline = not seen
     
-    for page in range(1, 6):
+    # Fetch 3 pages (60 scripts) from the DEFAULT front-page feed
+    # This ensures newly approved scripts are caught even if originally posted days ago
+    for page in range(1, 4):
         try:
-            url = SCRIPTBLOX_API + "?page=" + str(page) + "&max=20&sortBy=createdAt&order=desc"
+            url = SCRIPTBLOX_API + "?page=" + str(page) + "&max=20"
             r = requests.get(url, headers=HEADERS, timeout=20)
             if r.status_code != 200: break
                 
