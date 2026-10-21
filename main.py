@@ -4,8 +4,9 @@ import time
 from datetime import datetime, timezone
 import requests
 
-# --- SCRIPTBLOX WEBHOOK ---
-SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562443293395132566/TK090DqpvlA6nLw42hwg_5Bhn2u-wNZys_r9Ig3KIrr1-hcVN0XgTsMPboHiqT2QqK-W"
+# --- SECURE WEBHOOK ---
+# Reads from GitHub Secrets so it cannot be scraped by spammers
+SCRIPTBLOX_WEBHOOK = os.environ.get("SCRIPTBLOX_WEBHOOK")
 
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
@@ -23,6 +24,10 @@ def save_seen(path, seen):
         f.write("\n".join(sorted(seen)) + ("\n" if seen else ""))
 
 def send_discord(webhook_url, title, description, url, color, footer):
+    if not webhook_url:
+        print("[hook] error: Webhook URL is missing from Secrets!")
+        return
+        
     payload = {"embeds": [{
         "title": title[:256], "url": url,
         "description": description[:2048],
@@ -80,7 +85,6 @@ def check_scriptblox():
 
 if __name__ == "__main__":
     print("Starting 1-minute loop. Will run for ~5 hours 50 minutes...")
-    # Run for 5 hours 50 mins (21000 seconds), then let GitHub restart us
     start_time = time.time()
     while time.time() - start_time < 21000:
         print("Checking ScriptBlox...")
