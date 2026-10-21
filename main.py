@@ -11,7 +11,7 @@ SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562395084971057152/aFM9z
 
 # Jina Reader bypasses Cloudflare by using residential IPs
 V3RM_URL = "https://v3rm.net/forums/roblox.19/"
-JINA_URL = f"https://r.jina.ai/{V3RM_URL}"
+JINA_URL = "https://r.jina.ai/" + V3RM_URL
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 
 HEADERS = {
@@ -40,10 +40,10 @@ def send_discord(webhook_url, title, description, url, color, footer):
     }]}
     try:
         r = requests.post(webhook_url, json=payload, headers=HEADERS, timeout=15)
-        print(f"[hook] {r.status_code} :: {title[:60]}")
+        print("[hook] {} :: {}".format(r.status_code, title[:60]))
         time.sleep(1)
     except Exception as e:
-        print(f"[hook] error: {e}")
+        print("[hook] error: {}".format(e))
 
 def check_v3rm():
     print("[v3rm] checking via Jina Reader...")
@@ -52,12 +52,11 @@ def check_v3rm():
     
     try:
         r = requests.get(JINA_URL, headers=HEADERS, timeout=25)
-        print(f"[v3rm] status: {r.status_code}")
+        print("[v3rm] status: {}".format(r.status_code))
         if r.status_code != 200:
-            print(f"[v3rm] body: {r.text[:200]}"); return
+            print("[v3rm] body: {}".format(r.text[:200])); return
         
         # Jina returns markdown. Extract all links that look like threads.
-        # Format: [Thread Title](https://v3rm.net/threads/thread-title.12345/)
         links = re.findall(r'\[([^\]]+)\]\((https://v3rm\.net/threads/[^)]+)\)', r.text)
         
         if not links:
@@ -71,14 +70,14 @@ def check_v3rm():
             if baseline:
                 seen.add(link); continue
             
-            send_discord(V3RM_WEBHOOK, title, f"**New post in roblox.19**", link, 0xE74C3C, "V3rm · roblox.19")
+            send_discord(V3RM_WEBHOOK, title, "**New post in roblox.19**", link, 0xE74C3C, "V3rm · roblox.19")
             seen.add(link)
             
         if baseline:
-            print(f"[v3rm] baseline: {len(seen)} cached, no pings")
+            print("[v3rm] baseline: {} cached, no pings".format(len(seen)))
         save_seen(V3RM_SEEN, seen)
     except Exception as e:
-        print(f"[v3rm] error: {e}")
+        print("[v3rm] error: {}".format(e))
 
 def check_scriptblox():
     print("[sb] checking...")
@@ -88,9 +87,9 @@ def check_scriptblox():
     
     for page in range(1, 4):
         try:
-            url = f"{SCRIPTBLOX_API}?page={page}&max=20&sortBy=createdAt&order=desc"
+            url = "{}?page={}&max=20&sortBy=createdAt&order=desc".format(SCRIPTBLOX_API, page)
             r = requests.get(url, headers=HEADERS, timeout=20)
-            print(f"[sb] page {page} status: {r.status_code}")
+            print("[sb] page {} status: {}".format(page, r.status_code))
             if r.status_code != 200:
                 break
                 
@@ -119,18 +118,18 @@ def check_scriptblox():
                     title = s.get("title", "Unknown Script")
                     game = (s.get("game") or {}).get("name", "Unknown")
                     slug = s.get("slug", "")
-                    url = f"https://scriptblox.com/script/{slug}-{sid}" if slug else f"https://scriptblox.com/script/{sid}"
+                    url = "https://scriptblox.com/script/{}-{}".format(slug, sid) if slug else "https://scriptblox.com/script/{}".format(sid)
                     
-                    send_discord(SCRIPTBLOX_WEBHOOK, title, f"**Game:** {game}\.addn**Views:** {s.get('views(s',id0)}\n**Key:** `)
-{s.get('key                
-',False)}`",
-                                 url, 0x3498       DB, "ScriptBlox")
-                seen except Exception as e:
-            print(f"[sb] error on page {page}: {e}")
+                    desc = "**Game:** {}\n**Views:** {}\n**Key:** `{}`".format(game, s.get('views',0), s.get('key',False))
+                    send_discord(SCRIPTBLOX_WEBHOOK, title, desc, url, 0x3498DB, "ScriptBlox")
+                seen.add(sid)
+                
+        except Exception as e:
+            print("[sb] error on page {}: {}".format(page, e))
             break
             
     if baseline:
-        print(f"[sb] baseline: {len(seen)} cached, no pings")
+        print("[sb] baseline: {} cached, no pings".format(len(seen)))
     save_seen(SB_SEEN, seen)
 
 if __name__ == "__main__":
