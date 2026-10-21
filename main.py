@@ -1,24 +1,15 @@
-# Python 3.10+, GitHub Actions — ScriptBlox + V3rm roblox.19 → Discord
+# Python 3.10+, GitHub Actions — ScriptBlox → Discord
 import os
 import time
-import re
 from datetime import datetime, timezone, timedelta
 import requests
 
-# --- WEBHOOKS ---
-V3RM_WEBHOOK = "https://discord.com/api/webhooks/1562394916653367417/ItV37v1r4LwP1twjlGLM1_hICp9Ju1-eCNNqgVcW7ytl27TqVIyEmTNSZ5mrhtdWlmCl"
-SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562395084971057152/aFM9z7Z352KMHPNMfXaC4t-h-h_iuK-6eV08zW5Ttw-vKHqTAxnkqwCwfkL0pO26-AAv"
+# --- SCRIPTBLOX WEBHOOK ---
+SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562443293395132566/TK090DqpvlA6nLw42hwg_5Bhn2u-wNZys_r9Ig3KIrr1-hcVN0XgTsMPboHiqT2QqK-W"
 
-# Jina Reader bypasses Cloudflare by using residential IPs
-V3RM_URL = "https://v3rm.net/forums/roblox.19/"
-JINA_URL = "https://r.jina.ai/" + V3RM_URL
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-}
-
-V3RM_SEEN = "v3rm_seen.txt"
 SB_SEEN = "sb_seen.txt"
 FRESH_WINDOW = timedelta(minutes=15)
 
@@ -40,44 +31,10 @@ def send_discord(webhook_url, title, description, url, color, footer):
     }]}
     try:
         r = requests.post(webhook_url, json=payload, headers=HEADERS, timeout=15)
-        print("[hook] {} :: {}".format(r.status_code, title[:60]))
+        print("[hook]", r.status_code, "::", title[:60])
         time.sleep(1)
     except Exception as e:
-        print("[hook] error: {}".format(e))
-
-def check_v3rm():
-    print("[v3rm] checking via Jina Reader...")
-    seen = load_seen(V3RM_SEEN)
-    baseline = not seen
-    
-    try:
-        r = requests.get(JINA_URL, headers=HEADERS, timeout=25)
-        print("[v3rm] status: {}".format(r.status_code))
-        if r.status_code != 200:
-            print("[v3rm] body: {}".format(r.text[:200])); return
-        
-        # Jina returns markdown. Extract all links that look like threads.
-        links = re.findall(r'\[([^\]]+)\]\((https://v3rm\.net/threads/[^)]+)\)', r.text)
-        
-        if not links:
-            print("[v3rm] no thread links found in Jina output.")
-            return
-
-        # Iterate in reverse so oldest are processed first
-        for title, link in reversed(links):
-            if link in seen:
-                continue
-            if baseline:
-                seen.add(link); continue
-            
-            send_discord(V3RM_WEBHOOK, title, "**New post in roblox.19**", link, 0xE74C3C, "V3rm · roblox.19")
-            seen.add(link)
-            
-        if baseline:
-            print("[v3rm] baseline: {} cached, no pings".format(len(seen)))
-        save_seen(V3RM_SEEN, seen)
-    except Exception as e:
-        print("[v3rm] error: {}".format(e))
+        print("[hook] error:", e)
 
 def check_scriptblox():
     print("[sb] checking...")
@@ -85,24 +42,40 @@ def check_scriptblox():
     baseline = not seen
     now = datetime.now(timezone.utc)
     
+    # Check if this was manually triggered via the "Run workflow" button
+    is_manual_run = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+    
     for page in range(1, 4):
         try:
-            url = "{}?page={}&max=20&sortBy=createdAt&order=desc".format(SCRIPTBLOX_API, page)
+            url = SCRIPTBLOX_API + "?page=" + str(page) + "&max=20&sortBy=createdAt&order=desc"
             r = requests.get(url, headers=HEADERS, timeout=20)
-            print("[sb] page {} status: {}".format(page, r.status_code))
-            if r.status_code != 200:
-                break
+            print("[sb] page", page, "status:", r.status_code)
+            if r.status_code != 200: break
                 
             scripts = r.json().get("result", {}).get("scripts", [])
-            if not scripts:
-                break
+            if not scripts: break
                 
             for s in scripts:
                 sid = s.get("_id") or s.get("id")
-                if not sid or sid in seen:
-                    continue
+                if not sid: continue
+                
+                title = s.get("title", "Unknown Script")
+                game = (s.get("game") or {}).get("name", "Unknown")
+                slug = s.get("slug", "")
+                link = "https://scriptblox.com/script/" + slug + "-" + sid if slug else "https://scriptblox.com/script/" + sid
+                desc = "**Game:** " + game + "\n**Views:** " + str(s.get('views',0)) + "\n**Key:** `" + str(s.get('key',False)) + "`"
+                
+                # FORCE TEST MESSAGE IF MANUALLY RUN
+                if is_manual_run:
+                    print("[TEST MODE] Sending test ping to Discord...")
+                    send_discord(SCRIPTBLOX_WEBHOOK, "TEST: " + title, desc, link, 0xFF0000, "ScriptBlox TEST")
+                    return # Stop running after sending the test
+                
+                # NORMAL SCHEDULE LOGIC
+                if sid in seen: continue
                 if baseline:
-                    seen.add(sid); continue
+                    seen.add(sid)
+                    continue
                 
                 fresh = True
                 raw = s.get("createdAt")
@@ -111,27 +84,19 @@ def check_scriptblox():
                         clean = raw.split(".")[0].rstrip("Z") + "Z"
                         created = datetime.strptime(clean, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
                         fresh = (now - created) <= FRESH_WINDOW
-                    except Exception:
-                        pass
+                    except Exception: pass
                 
                 if fresh:
-                    title = s.get("title", "Unknown Script")
-                    game = (s.get("game") or {}).get("name", "Unknown")
-                    slug = s.get("slug", "")
-                    url = "https://scriptblox.com/script/{}-{}".format(slug, sid) if slug else "https://scriptblox.com/script/{}".format(sid)
-                    
-                    desc = "**Game:** {}\n**Views:** {}\n**Key:** `{}`".format(game, s.get('views',0), s.get('key',False))
-                    send_discord(SCRIPTBLOX_WEBHOOK, title, desc, url, 0x3498DB, "ScriptBlox")
+                    send_discord(SCRIPTBLOX_WEBHOOK, title, desc, link, 0x3498DB, "ScriptBlox")
                 seen.add(sid)
                 
         except Exception as e:
-            print("[sb] error on page {}: {}".format(page, e))
+            print("[sb] error on page", page, ":", e)
             break
             
-    if baseline:
-        print("[sb] baseline: {} cached, no pings".format(len(seen)))
-    save_seen(SB_SEEN, seen)
+    if baseline and not is_manual_run:
+        print("[sb] baseline:", len(seen), "cached")
+        save_seen(SB_SEEN, seen)
 
 if __name__ == "__main__":
-    check_v3rm()
     check_scriptblox()
