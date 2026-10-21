@@ -2,17 +2,14 @@
 import os
 import time
 from datetime import datetime, timezone, timedelta
-
-import feedparser
 import requests
 
 # --- WEBHOOKS ---
 V3RM_WEBHOOK = "https://discord.com/api/webhooks/1562394916653367417/ItV37v1r4LwP1twjlGLM1_hICp9Ju1-eCNNqgVcW7ytl27TqVIyEmTNSZ5mrhtdWlmCl"
 SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562395084971057152/aFM9z7Z352KMHPNMfXaC4t-h-h_iuK-6eV08zW5Ttw-vKHqTAxnkqwCwfkL0pO26-AAv"
 
-# --- VERCEL PROXY ---
-V3RM_PROXY = "https://intelbot-rho.vercel.app/api/proxy"
-V3RM_RSS = f"{V3RM_PROXY}?url=https%3A%2F%2Fv3rm.net%2Fforums%2Froblox.19%2Findex.rss"
+# rss2json API for V3rm (bypasses Cloudflare block)
+V3RM_RSS = "https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Fv3rm.net%2Fforums%2Froblox.19%2Findex.rss"
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 
 HEADERS = {
@@ -23,18 +20,15 @@ V3RM_SEEN = "v3rm_seen.txt"
 SB_SEEN = "sb_seen.txt"
 FRESH_WINDOW = timedelta(minutes=15)
 
-
 def load_seen(path):
     if os.path.exists(path):
         with open(path, "r") as f:
             return set(line.strip() for line in f if line.strip())
     return set()
 
-
 def save_seen(path, seen):
     with open(path, "w") as f:
         f.write("\n".join(sorted(seen)) + ("\n" if seen else ""))
-
 
 def send_discord(webhook_url, title, description, url, color, footer):
     payload = {"embeds": [{
@@ -49,7 +43,6 @@ def send_discord(webhook_url, title, description, url, color, footer):
     except Exception as e:
         print(f"[hook] error: {e}")
 
-
 def check_v3rm():
     print("[v3rm] checking...")
     seen = load_seen(V3RM_SEEN)
@@ -60,16 +53,23 @@ def check_v3rm():
         if r.status_code != 200:
             print(f"[v3rm] body: {r.text[:200]}"); return
         
-        feed = feedparser.parse(r.content)
-        for e in feed.entries:
-            link = e.get("link", "").strip()
-            title = e.get("title", "Untitled").strip()
+        data = r.json()
+        if data.get("status") != "ok":
+            print(f"[v3rm] rss2json error: {data.get('message')}")
+            return
+
+        for item in data.get("items", []):
+            link = item.get("link", "").strip()
+            title = item.get("title", "Untitled").strip()
+            author = item.get("author", "?")
+            pub_date = item.get("pubDate", "")
+
             if not link or link in seen:
                 continue
             if baseline:
                 seen.add(link); continue
             
-            send_discord(V3RM_WEBHOOK, title, f"**Author:** {e.get('author','?')}\n**Posted:** {e.get('published','')}",
+            send_discord(V3RM_WEBHOOK, title, f"**Author:** {author}\n**Posted:** {pub_date}",
                          link, 0xE74C3C, "V3rm · roblox.19")
             seen.add(link)
         if baseline:
@@ -77,7 +77,6 @@ def check_v3rm():
         save_seen(V3RM_SEEN, seen)
     except Exception as e:
         print(f"[v3rm] error: {e}")
-
 
 def check_scriptblox():
     print("[sb] checking...")
@@ -131,7 +130,6 @@ def check_scriptblox():
     if baseline:
         print(f"[sb] baseline: {len(seen)} cached, no pings")
     save_seen(SB_SEEN, seen)
-
 
 if __name__ == "__main__":
     check_v3rm()
