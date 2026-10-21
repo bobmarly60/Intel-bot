@@ -3,13 +3,15 @@ import os
 import time
 from datetime import datetime, timezone, timedelta
 import requests
+import feedparser
+import cloudscraper
 
 # --- WEBHOOKS ---
 V3RM_WEBHOOK = "https://discord.com/api/webhooks/1562394916653367417/ItV37v1r4LwP1twjlGLM1_hICp9Ju1-eCNNqgVcW7ytl27TqVIyEmTNSZ5mrhtdWlmCl"
 SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562395084971057152/aFM9z7Z352KMHPNMfXaC4t-h-h_iuK-6eV08zW5Ttw-vKHqTAxnkqwCwfkL0pO26-AAv"
 
-# rss2json API for V3rm (bypasses Cloudflare block)
-V3RM_RSS = "https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Fv3rm.net%2Fforums%2Froblox.19%2Findex.rss"
+# Direct V3rm URL (cloudscraper will bypass the Cloudflare block)
+V3RM_RSS = "https://v3rm.net/forums/roblox.19/index.rss"
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 
 HEADERS = {
@@ -48,28 +50,23 @@ def check_v3rm():
     seen = load_seen(V3RM_SEEN)
     baseline = not seen
     try:
-        r = requests.get(V3RM_RSS, headers=HEADERS, timeout=25)
+        # Use cloudscraper to bypass Cloudflare
+        scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False})
+        r = scraper.get(V3RM_RSS, timeout=25)
         print(f"[v3rm] status: {r.status_code}")
         if r.status_code != 200:
             print(f"[v3rm] body: {r.text[:200]}"); return
         
-        data = r.json()
-        if data.get("status") != "ok":
-            print(f"[v3rm] rss2json error: {data.get('message')}")
-            return
-
-        for item in data.get("items", []):
-            link = item.get("link", "").strip()
-            title = item.get("title", "Untitled").strip()
-            author = item.get("author", "?")
-            pub_date = item.get("pubDate", "")
-
+        feed = feedparser.parse(r.content)
+        for e in feed.entries:
+            link = e.get("link", "").strip()
+            title = e.get("title", "Untitled").strip()
             if not link or link in seen:
                 continue
             if baseline:
                 seen.add(link); continue
             
-            send_discord(V3RM_WEBHOOK, title, f"**Author:** {author}\n**Posted:** {pub_date}",
+            send_discord(V3RM_WEBHOOK, title, f"**Author:** {e.get('author','?')}\n**Posted:** {e.get('published','')}",
                          link, 0xE74C3C, "V3rm · roblox.19")
             seen.add(link)
         if baseline:
