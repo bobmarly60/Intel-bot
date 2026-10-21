@@ -2,15 +2,14 @@
 import os
 import time
 from datetime import datetime, timezone, timedelta
-import feedparser
 import requests
-from curl_cffi import requests as cffi_requests
+import feedparser
+from urllib.parse import quote
 
 # --- WEBHOOKS ---
 V3RM_WEBHOOK = "https://discord.com/api/webhooks/1562394916653367417/ItV37v1r4LwP1twjlGLM1_hICp9Ju1-eCNNqgVcW7ytl27TqVIyEmTNSZ5mrhtdWlmCl"
 SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562395084971057152/aFM9z7Z352KMHPNMfXaC4t-h-h_iuK-6eV08zW5Ttw-vKHqTAxnkqwCwfkL0pO26-AAv"
 
-# Direct V3rm URL
 V3RM_RSS = "https://v3rm.net/forums/roblox.19/index.rss"
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 
@@ -49,31 +48,51 @@ def check_v3rm():
     print("[v3rm] checking...")
     seen = load_seen(V3RM_SEEN)
     baseline = not seen
-    try:
-        # curl_cffi impersonates Chrome to bypass Cloudflare
-        r = cffi_requests.get(V3RM_RSS, impersonate="chrome", timeout=30)
-        print(f"[v3rm] status: {r.status_code}")
-        
-        if r.status_code != 200:
-            print(f"[v3rm] body: {r.text[:200]}"); return
-        
-        feed = feedparser.parse(r.content)
-        for e in feed.entries:
-            link = e.get("link", "").strip()
-            title = e.get("title", "Untitled").strip()
-            if not link or link in seen:
-                continue
-            if baseline:
-                seen.add(link); continue
-            
-            send_discord(V3RM_WEBHOOK, title, f"**Author:** {e.get('author','?')}\n**Posted:** {e.get('published','')}",
-                         link, 0xE74C3C, "V3rm · roblox.19")
-            seen.add(link)
+    encoded_url = quote(V3RM_RSS, safe='')
+    
+    # Three different powerful proxies
+    proxies = [
+        f"https://api.codetabs.com/v1/proxy?quest={encoded_url}",
+        f"https://api.allorigins.win/raw?url={encoded_url}",
+        f"https://corsproxy.io/?{encoded_url}"
+    ]
+    
+    feed = None
+    for i, proxy in enumerate(proxies, 1):
+        try:
+            print(f"[v3rm] trying proxy {i}...")
+            r = requests.get(proxy, headers=HEADERS, timeout=15)
+            if r.status_code == 200:
+                parsed = feedparser.parse(r.content)
+                if parsed.entries:
+                    print(f"[v3rm] success via proxy {i}")
+                    feed = parsed
+                    break
+                else:
+                    print(f"[v3rm] proxy {i} empty.")
+            else:
+                print(f"[v3rm] proxy {i} failed: {r.status_code}")
+        except Exception as e:
+            print(f"[v3rm] proxy {i} error: {e}")
+
+    if not feed:
+        print("[v3rm] all proxies failed.")
+        return
+
+    for e in feed.entries:
+        link = e.get("link", "").strip()
+        title = e.get("title", "Untitled").strip()
+        if not link or link in seen:
+            continue
         if baseline:
-            print(f"[v3rm] baseline: {len(seen)} cached, no pings")
-        save_seen(V3RM_SEEN, seen)
-    except Exception as e:
-        print(f"[v3rm] error: {e}")
+            seen.add(link); continue
+        
+        send_discord(V3RM_WEBHOOK, title, f"**Author:** {e.get('author','?')}\n**Posted:** {e.get('published','')}",
+                     link, 0xE74C3C, "V3rm · roblox.19")
+        seen.add(link)
+    if baseline:
+        print(f"[v3rm] baseline: {len(seen)} cached, no pings")
+    save_seen(V3RM_SEEN, seen)
 
 def check_scriptblox():
     print("[sb] checking...")
