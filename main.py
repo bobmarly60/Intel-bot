@@ -10,7 +10,8 @@ SCRIPTBLOX_WEBHOOK = "https://discord.com/api/webhooks/1562447233448808678/UStaM
 SCRIPTBLOX_API = "https://scriptblox.com/api/script/fetch"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
 
-SB_SEEN = "sb_seen.txt"
+# NEW FILE NAME: Forces a fresh baseline so it doesn't spam old scripts
+SB_SEEN = "sb_seen_v2.txt"
 
 def load_seen(path):
     if os.path.exists(path):
@@ -39,8 +40,7 @@ def check_scriptblox():
     seen = load_seen(SB_SEEN)
     baseline = not seen
     
-    # Fetch 3 pages (60 scripts) from the DEFAULT front-page feed
-    # This ensures newly approved scripts are caught even if originally posted days ago
+    # Fetch the default front page feed (which shows newly APPROVED scripts at the top)
     for page in range(1, 4):
         try:
             url = SCRIPTBLOX_API + "?page=" + str(page) + "&max=20"
